@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>西交大笃行战队 Debug Dashboard</title>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        :root{
+            --bg:#0b0f12;
+            --panel:#0f1720;
+            --muted:#9aa3b2;
+            --accent:#4db6ac;
+            --card:#0f1417;
+            --glass: rgba(255,255,255,0.02);
+        }
+        *{box-sizing:border-box}
+        html,body{height:100%;}
+        body { font-family: 'Inter', system-ui, -apple-system, 'PingFang SC', 'Noto Sans SC', Arial; background: linear-gradient(180deg,#060708 0%, #0b0f12 100%); color: #e6eef3; margin: 0; padding: 18px; }
+
+        header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+        .brand{display:flex;gap:12px;align-items:center}
+        .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#3fb3a0);display:flex;align-items:center;justify-content:center;font-weight:700;color:#05201d}
+        header h1{font-size:18px;margin:0;font-weight:600}
+        header .sub{color:var(--muted);font-size:12px}
+
+        .controls{display:flex;gap:12px;align-items:center;margin-left:auto}
+        .btn{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px 12px;border-radius:10px;color:var(--muted);cursor:pointer;font-weight:500}
+        .btn.primary{background:linear-gradient(90deg,var(--accent),#3fb3a0);color:#041816;border:0}
+        .toolbar{display:flex;align-items:center;gap:8px}
+
+        #charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+
+        .card{background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.015));border-radius:12px;padding:10px;border:1px solid rgba(255,255,255,0.03);box-shadow:0 6px 30px rgba(0,0,0,0.6);display:flex;flex-direction:column}
+        .card-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+        .meta{display:flex;gap:8px;align-items:center}
+        .title{font-size:13px;color:var(--accent);margin:0}
+        .latest{font-weight:600;color:#e7f7f5;font-size:14px}
+        .card-actions{display:flex;gap:6px;align-items:center}
+        .small-btn{background:transparent;border:0;color:var(--muted);cursor:pointer;padding:6px;border-radius:8px}
+
+        .chart-wrap{height:260px}
+        .muted{color:var(--muted);font-size:13px}
+
+        .empty{border:2px dashed rgba(255,255,255,0.03);padding:30px;border-radius:12px;text-align:center;color:var(--muted)}
+
+        /* 折叠时隐藏图表，仅显示标题与最新值 */
+        .card.collapsed{padding-bottom:10px}
+        .card.collapsed .chart-wrap{display:none}
+        .card.collapsed .latest{opacity:0.95}
+
+        @media (max-width:700px){ .chart-wrap{height:200px} }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <div class="logo">RM</div>
+            <div>
+                <h1>西交大笃行战队 Debug Dashboard</h1>
+                <div class="sub">实时数据可视化 · 使用 SSE 自动创建图表</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="toolbar">
+                <button id="btnPause" class="btn">暂停</button>
+                <button id="btnClear" class="btn">清空</button>
+                <button id="btnDownloadAll" class="btn">全部下载</button>
+                <label class="muted" style="margin-left:6px">最大点数</label>
+                <input id="maxPoints" type="range" min="50" max="2000" value="200">
+                <span id="maxPointsVal" class="muted">200</span>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div id="charts" aria-live="polite">
+            <div id="empty" class="empty">等待数据中…（通过 /data SSE 推送）</div>
+        </div>
+    </main>
+
+    <script>
+        const charts = {}; // key -> {chart, buffer, history, latestEl}
+        let paused = false;
+        let maxDataPoints = 200;
+        // 每个图表历史数据的最大条目数，防止内存占用过大
+        const MAX_HISTORY_POINTS = 5000;
+
+        function sanitizeId(key){ return 'c_' + key.replace(/[^a-zA-Z0-9_-]/g,'_'); }
+
+        function createChart(key){
+            const id = sanitizeId(key);
+            const container = document.createElement('div'); container.className='card';
+
+            const header = document.createElement('div'); header.className='card-header';
+            const meta = document.createElement('div'); meta.className='meta';
+            const title = document.createElement('div'); title.className='title'; title.textContent = key;
+            const latest = document.createElement('div'); latest.className='latest'; latest.textContent = '-';
+            meta.appendChild(title); meta.appendChild(latest);
+
+            const actions = document.createElement('div'); actions.className='card-actions';
+            const btnDownload = document.createElement('button'); btnDownload.className='small-btn'; btnDownload.title='下载csv'; btnDownload.innerHTML='下载';
+            const btnRemove = document.createElement('button'); btnRemove.className='small-btn'; btnRemove.title='折叠/展开'; btnRemove.innerHTML='▾';
+            actions.appendChild(btnDownload); actions.appendChild(btnRemove);
+
+            header.appendChild(meta); header.appendChild(actions);
+
+            const wrap = document.createElement('div'); wrap.className='chart-wrap';
+            const canvas = document.createElement('canvas'); canvas.id = id; wrap.appendChild(canvas);
+
+            container.appendChild(header); container.appendChild(wrap);
+
+            const chartsRoot = document.getElementById('charts');
+            const empty = document.getElementById('empty'); if(empty) empty.remove();
+            chartsRoot.prepend(container);
+
+            const ctx = canvas.getContext('2d');
+            const cfg = {
+                type:'line',
+                data:{labels:[],datasets:[{label:key,borderColor:'#4db6ac',backgroundColor:'rgba(77,182,172,0.06)',data:[],pointRadius:0,tension:0.2}]},
+                options:{animation:false,plugins:{legend:{display:false}},elements:{point:{radius:0}},scales:{x:{display:true,ticks:{color:'#9aa3b2',font:{size:10}},grid:{color:'rgba(255,255,255,0.02)'}},y:{ticks:{color:'#9aa3b2'},grid:{color:'rgba(255,255,255,0.03)'}}}}
+            };
+            const c = new Chart(ctx,cfg);
+
+            btnRemove.addEventListener('click', ()=>{
+                const collapsed = container.classList.toggle('collapsed');
+                btnRemove.innerHTML = collapsed ? '▸' : '▾';
+            });
+            btnDownload.addEventListener('click', ()=>{
+                const obj = charts[key];
+                const rows = ['time,value'];
+                (obj.history || []).forEach(pt => rows.push(`${new Date(pt.t).toISOString()},${pt.v}`));
+                const csv = rows.join('\n');
+                const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = key.replace(/\W+/g,'_') + '.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+            });
+
+            charts[key] = {chart:c, buffer:[], history: [], latestEl: latest, container};
+            return charts[key];
+        }
+
+        function showEmpty(){
+            const root = document.getElementById('charts');
+            const div = document.createElement('div'); div.id='empty'; div.className='empty'; div.textContent='等待数据中…（通过 /data SSE 推送）';
+            root.appendChild(div);
+        }
+
+        function updateCharts(){
+            if(paused) return;
+            for(const key in charts){
+                const obj = charts[key];
+                if(obj.buffer.length===0) continue;
+                const chart = obj.chart;
+                obj.buffer.forEach(p=>{
+                    chart.data.labels.push(new Date(p.t).toLocaleTimeString());
+                    chart.data.datasets[0].data.push(p.v);
+                    if(obj.latestEl) obj.latestEl.textContent = (typeof p.v === 'number')? p.v.toFixed(2): String(p.v);
+                    obj.history.push({t: p.t, v: p.v});
+                });
+                obj.buffer = [];
+                // 修剪历史数据，保持在 MAX_HISTORY_POINTS 以内
+                if(obj.history.length > MAX_HISTORY_POINTS){
+                    const removeCount = obj.history.length - MAX_HISTORY_POINTS;
+                    obj.history.splice(0, removeCount);
+                }
+                while(chart.data.labels.length>maxDataPoints){ chart.data.labels.shift(); chart.data.datasets[0].data.shift(); }
+                chart.update('none');
+            }
+        }
+
+        // flush buffer frequently
+        setInterval(updateCharts, 100);
+
+        const evt = new EventSource('/data');
+        evt.onmessage = function(e){
+            try{
+                const arr = JSON.parse(e.data);
+                arr.forEach(p=>{
+                    if(!charts[p.k]) createChart(p.k);
+                    charts[p.k].buffer.push(p);
+                });
+            }catch(err){ console.warn('parse err', err); }
+        };
+
+        document.getElementById('btnPause').addEventListener('click', ()=>{
+            paused = !paused; document.getElementById('btnPause').textContent = paused? '继续':'暂停';
+        });
+        document.getElementById('btnClear').addEventListener('click', ()=>{
+            document.getElementById('charts').innerHTML='';
+            for(const k in charts){ delete charts[k]; }
+            showEmpty();
+        });
+
+        document.getElementById('btnDownloadAll').addEventListener('click', ()=>{
+            for(const k in charts){ try{
+                const obj = charts[k];
+                const rows = ['time,value'];
+                (obj.history || []).forEach(pt => rows.push(`${new Date(pt.t).toISOString()},${pt.v}`));
+                const csv = rows.join('\n');
+                const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = k.replace(/\W+/g,'_') + '.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+            }catch(e){console.warn(e)} }
+        });
+
+        document.getElementById('maxPoints').addEventListener('input', (e)=>{
+            maxDataPoints = Number(e.target.value); document.getElementById('maxPointsVal').textContent = maxDataPoints;
+        });
+
+        // 初始空状态
+        showEmpty();
+    </script>
+</body>
+</html>
