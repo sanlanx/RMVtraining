@@ -1,218 +1,639 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>西交大笃行战队 Debug Dashboard</title>
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RMV Debug Dashboard</title>
     <style>
-        :root{
-            --bg:#0b0f12;
-            --panel:#0f1720;
-            --muted:#9aa3b2;
-            --accent:#4db6ac;
-            --card:#0f1417;
-            --glass: rgba(255,255,255,0.02);
+        :root {
+            color-scheme: dark;
+            --bg: #101316;
+            --surface: #181d21;
+            --surface-raised: #20262b;
+            --line: #30383e;
+            --text: #eef2f3;
+            --muted: #9ba7ad;
+            --accent: #45c4b0;
+            --accent-soft: #153c37;
+            --warning: #e3ad4a;
+            --danger: #e16b65;
+            --grid: #293136;
         }
-        *{box-sizing:border-box}
-        html,body{height:100%;}
-        body { font-family: 'Inter', system-ui, -apple-system, 'PingFang SC', 'Noto Sans SC', Arial; background: linear-gradient(180deg,#060708 0%, #0b0f12 100%); color: #e6eef3; margin: 0; padding: 18px; }
 
-        header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
-        .brand{display:flex;gap:12px;align-items:center}
-        .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#3fb3a0);display:flex;align-items:center;justify-content:center;font-weight:700;color:#05201d}
-        header h1{font-size:18px;margin:0;font-weight:600}
-        header .sub{color:var(--muted);font-size:12px}
+        * { box-sizing: border-box; }
 
-        .controls{display:flex;gap:12px;align-items:center;margin-left:auto}
-        .btn{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px 12px;border-radius:10px;color:var(--muted);cursor:pointer;font-weight:500}
-        .btn.primary{background:linear-gradient(90deg,var(--accent),#3fb3a0);color:#041816;border:0}
-        .toolbar{display:flex;align-items:center;gap:8px}
+        html, body { min-height: 100%; }
 
-        #charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            font-size: 14px;
+            letter-spacing: 0;
+        }
 
-        .card{background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.015));border-radius:12px;padding:10px;border:1px solid rgba(255,255,255,0.03);box-shadow:0 6px 30px rgba(0,0,0,0.6);display:flex;flex-direction:column}
-        .card-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-        .meta{display:flex;gap:8px;align-items:center}
-        .title{font-size:13px;color:var(--accent);margin:0}
-        .latest{font-weight:600;color:#e7f7f5;font-size:14px}
-        .card-actions{display:flex;gap:6px;align-items:center}
-        .small-btn{background:transparent;border:0;color:var(--muted);cursor:pointer;padding:6px;border-radius:8px}
+        button, select { font: inherit; }
 
-        .chart-wrap{height:260px}
-        .muted{color:var(--muted);font-size:13px}
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            min-height: 64px;
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--line);
+            background: rgba(16, 19, 22, 0.96);
+        }
 
-        .empty{border:2px dashed rgba(255,255,255,0.03);padding:30px;border-radius:12px;text-align:center;color:var(--muted)}
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: max-content;
+        }
 
-        /* 折叠时隐藏图表，仅显示标题与最新值 */
-        .card.collapsed{padding-bottom:10px}
-        .card.collapsed .chart-wrap{display:none}
-        .card.collapsed .latest{opacity:0.95}
+        .brand-mark {
+            display: grid;
+            width: 38px;
+            height: 38px;
+            place-items: center;
+            border: 1px solid #367c72;
+            border-radius: 6px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 800;
+        }
 
-        @media (max-width:700px){ .chart-wrap{height:200px} }
+        h1 {
+            margin: 0;
+            font-size: 16px;
+            line-height: 1.25;
+            letter-spacing: 0;
+        }
+
+        .subtitle {
+            margin-top: 2px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .connection {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            min-width: max-content;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--warning);
+        }
+
+        .connection.online .status-dot { background: var(--accent); }
+        .connection.offline .status-dot { background: var(--danger); }
+
+        .toolbar {
+            display: flex;
+            flex: 1;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .field {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .btn, select {
+            min-height: 34px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: var(--surface-raised);
+            color: var(--text);
+        }
+
+        .btn {
+            padding: 0 12px;
+            cursor: pointer;
+        }
+
+        .btn:hover, select:hover { border-color: #526068; }
+        .btn:focus-visible, select:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        .btn.active {
+            border-color: #367c72;
+            background: var(--accent-soft);
+            color: var(--accent);
+        }
+
+        select { padding: 0 28px 0 10px; }
+
+        main { padding: 18px 20px 30px; }
+
+        #charts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+            gap: 12px;
+            align-items: start;
+        }
+
+        .chart-card {
+            min-width: 0;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: var(--surface);
+        }
+
+        .chart-header {
+            display: flex;
+            min-height: 46px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px 10px 8px 12px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .metric-info {
+            display: flex;
+            min-width: 0;
+            align-items: baseline;
+            gap: 10px;
+        }
+
+        .metric-name {
+            overflow: hidden;
+            color: var(--muted);
+            font-size: 12px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .metric-value {
+            min-width: 72px;
+            color: var(--text);
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+            font-size: 15px;
+            font-variant-numeric: tabular-nums;
+            font-weight: 700;
+        }
+
+        .card-actions { display: flex; gap: 4px; }
+
+        .icon-btn {
+            width: 34px;
+            height: 30px;
+            padding: 0;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+        }
+
+        .icon-btn:hover { background: var(--surface-raised); color: var(--text); }
+        .icon-btn:focus-visible { outline: 2px solid var(--accent); }
+
+        .chart-wrap {
+            width: 100%;
+            height: 250px;
+            padding: 8px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .chart-card.collapsed .chart-wrap { display: none; }
+        .chart-card.collapsed .chart-header { border-bottom: 0; }
+
+        .empty-state {
+            grid-column: 1 / -1;
+            display: grid;
+            min-height: 260px;
+            place-items: center;
+            border: 1px dashed #3a444a;
+            border-radius: 6px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .empty-title { color: var(--text); font-size: 15px; font-weight: 650; }
+        .empty-detail { margin-top: 6px; font-size: 12px; }
+
+        @media (max-width: 850px) {
+            .topbar { align-items: flex-start; flex-wrap: wrap; }
+            .connection { margin-left: auto; }
+            .toolbar { flex-basis: 100%; justify-content: flex-start; }
+        }
+
+        @media (max-width: 520px) {
+            .topbar, main { padding-left: 12px; padding-right: 12px; }
+            .toolbar { gap: 6px; }
+            .field { width: 100%; justify-content: space-between; }
+            .btn { flex: 1; padding: 0 8px; }
+            .chart-wrap { height: 220px; }
+        }
     </style>
 </head>
 <body>
-    <header>
+    <header class="topbar">
         <div class="brand">
-            <div class="logo">RM</div>
+            <div class="brand-mark" aria-hidden="true">RMV</div>
             <div>
-                <h1>西交大笃行战队 Debug Dashboard</h1>
-                <div class="sub">实时数据可视化 · 使用 SSE 自动创建图表</div>
+                <h1>视觉调试面板</h1>
+                <div class="subtitle">Real-time numeric telemetry</div>
             </div>
         </div>
 
-        <div class="controls">
-            <div class="toolbar">
-                <button id="btnPause" class="btn">暂停</button>
-                <button id="btnClear" class="btn">清空</button>
-                <button id="btnDownloadAll" class="btn">全部下载</button>
-                <label class="muted" style="margin-left:6px">最大点数</label>
-                <input id="maxPoints" type="range" min="50" max="2000" value="200">
-                <span id="maxPointsVal" class="muted">200</span>
-            </div>
+        <div id="connection" class="connection connecting" role="status" aria-live="polite">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="connectionText">正在连接</span>
+        </div>
+
+        <div class="toolbar">
+            <label class="field" for="timeWindow">
+                时间窗
+                <select id="timeWindow">
+                    <option value="15">15 秒</option>
+                    <option value="30" selected>30 秒</option>
+                    <option value="60">1 分钟</option>
+                    <option value="300">5 分钟</option>
+                    <option value="0">全部</option>
+                </select>
+            </label>
+            <button id="pauseButton" class="btn" type="button" aria-pressed="false">暂停</button>
+            <button id="clearButton" class="btn" type="button">清空</button>
+            <button id="exportButton" class="btn" type="button">导出 CSV</button>
         </div>
     </header>
 
     <main>
-        <div id="charts" aria-live="polite">
-            <div id="empty" class="empty">等待数据中…（通过 /data SSE 推送）</div>
-        </div>
+        <section id="charts" aria-live="polite"></section>
     </main>
 
     <script>
-        const charts = {}; // key -> {chart, buffer, history, latestEl}
-        let paused = false;
-        let maxDataPoints = 200;
-        // 每个图表历史数据的最大条目数，防止内存占用过大
-        const MAX_HISTORY_POINTS = 5000;
+        (() => {
+            "use strict";
 
-        function sanitizeId(key){ return 'c_' + key.replace(/[^a-zA-Z0-9_-]/g,'_'); }
+            const MAX_HISTORY_POINTS = 5000;
+            const chartsRoot = document.getElementById("charts");
+            const connection = document.getElementById("connection");
+            const connectionText = document.getElementById("connectionText");
+            const pauseButton = document.getElementById("pauseButton");
+            const clearButton = document.getElementById("clearButton");
+            const exportButton = document.getElementById("exportButton");
+            const timeWindow = document.getElementById("timeWindow");
 
-        function createChart(key){
-            const id = sanitizeId(key);
-            const container = document.createElement('div'); container.className='card';
+            // Each metric key owns one chart and an in-memory browser history.
+            const charts = new Map();
+            let paused = false;
+            let streamState = "connecting";
+            let eventSource = null;
 
-            const header = document.createElement('div'); header.className='card-header';
-            const meta = document.createElement('div'); meta.className='meta';
-            const title = document.createElement('div'); title.className='title'; title.textContent = key;
-            const latest = document.createElement('div'); latest.className='latest'; latest.textContent = '-';
-            meta.appendChild(title); meta.appendChild(latest);
-
-            const actions = document.createElement('div'); actions.className='card-actions';
-            const btnDownload = document.createElement('button'); btnDownload.className='small-btn'; btnDownload.title='下载csv'; btnDownload.innerHTML='下载';
-            const btnRemove = document.createElement('button'); btnRemove.className='small-btn'; btnRemove.title='折叠/展开'; btnRemove.innerHTML='▾';
-            actions.appendChild(btnDownload); actions.appendChild(btnRemove);
-
-            header.appendChild(meta); header.appendChild(actions);
-
-            const wrap = document.createElement('div'); wrap.className='chart-wrap';
-            const canvas = document.createElement('canvas'); canvas.id = id; wrap.appendChild(canvas);
-
-            container.appendChild(header); container.appendChild(wrap);
-
-            const chartsRoot = document.getElementById('charts');
-            const empty = document.getElementById('empty'); if(empty) empty.remove();
-            chartsRoot.prepend(container);
-
-            const ctx = canvas.getContext('2d');
-            const cfg = {
-                type:'line',
-                data:{labels:[],datasets:[{label:key,borderColor:'#4db6ac',backgroundColor:'rgba(77,182,172,0.06)',data:[],pointRadius:0,tension:0.2}]},
-                options:{animation:false,plugins:{legend:{display:false}},elements:{point:{radius:0}},scales:{x:{display:true,ticks:{color:'#9aa3b2',font:{size:10}},grid:{color:'rgba(255,255,255,0.02)'}},y:{ticks:{color:'#9aa3b2'},grid:{color:'rgba(255,255,255,0.03)'}}}}
-            };
-            const c = new Chart(ctx,cfg);
-
-            btnRemove.addEventListener('click', ()=>{
-                const collapsed = container.classList.toggle('collapsed');
-                btnRemove.innerHTML = collapsed ? '▸' : '▾';
-            });
-            btnDownload.addEventListener('click', ()=>{
-                const obj = charts[key];
-                const rows = ['time,value'];
-                (obj.history || []).forEach(pt => rows.push(`${new Date(pt.t).toISOString()},${pt.v}`));
-                const csv = rows.join('\n');
-                const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = key.replace(/\W+/g,'_') + '.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-            });
-
-            charts[key] = {chart:c, buffer:[], history: [], latestEl: latest, container};
-            return charts[key];
-        }
-
-        function showEmpty(){
-            const root = document.getElementById('charts');
-            const div = document.createElement('div'); div.id='empty'; div.className='empty'; div.textContent='等待数据中…（通过 /data SSE 推送）';
-            root.appendChild(div);
-        }
-
-        function updateCharts(){
-            if(paused) return;
-            for(const key in charts){
-                const obj = charts[key];
-                if(obj.buffer.length===0) continue;
-                const chart = obj.chart;
-                obj.buffer.forEach(p=>{
-                    chart.data.labels.push(new Date(p.t).toLocaleTimeString());
-                    chart.data.datasets[0].data.push(p.v);
-                    if(obj.latestEl) obj.latestEl.textContent = (typeof p.v === 'number')? p.v.toFixed(2): String(p.v);
-                    obj.history.push({t: p.t, v: p.v});
-                });
-                obj.buffer = [];
-                // 修剪历史数据，保持在 MAX_HISTORY_POINTS 以内
-                if(obj.history.length > MAX_HISTORY_POINTS){
-                    const removeCount = obj.history.length - MAX_HISTORY_POINTS;
-                    obj.history.splice(0, removeCount);
-                }
-                while(chart.data.labels.length>maxDataPoints){ chart.data.labels.shift(); chart.data.datasets[0].data.shift(); }
-                chart.update('none');
+            function setConnectionState(state, label) {
+                streamState = state;
+                connection.className = `connection ${state}`;
+                connectionText.textContent = label;
+                updateEmptyState();
             }
-        }
 
-        // flush buffer frequently
-        setInterval(updateCharts, 100);
+            function updateEmptyState() {
+                const existing = document.getElementById("emptyState");
+                if (charts.size > 0) {
+                    if (existing) existing.remove();
+                    return;
+                }
 
-        const evt = new EventSource('/data');
-        evt.onmessage = function(e){
-            try{
-                const arr = JSON.parse(e.data);
-                arr.forEach(p=>{
-                    if(!charts[p.k]) createChart(p.k);
-                    charts[p.k].buffer.push(p);
+                const empty = existing || document.createElement("div");
+                empty.id = "emptyState";
+                empty.className = "empty-state";
+                const detail = streamState === "online"
+                    ? "等待处理线程发送数值"
+                    : streamState === "offline"
+                        ? "数据连接已断开"
+                        : "正在建立数据连接";
+                empty.innerHTML = "";
+                const content = document.createElement("div");
+                const title = document.createElement("div");
+                title.className = "empty-title";
+                title.textContent = "暂无调试数据";
+                const message = document.createElement("div");
+                message.className = "empty-detail";
+                message.textContent = detail;
+                content.append(title, message);
+                empty.appendChild(content);
+                if (!existing) chartsRoot.appendChild(empty);
+            }
+
+            function formatValue(value) {
+                const absolute = Math.abs(value);
+                if (absolute !== 0 && (absolute >= 100000 || absolute < 0.001)) {
+                    return value.toExponential(3);
+                }
+                return value.toFixed(3).replace(/\.0+$|(\.\d*?)0+$/, "$1");
+            }
+
+            function makeChart(key) {
+                const card = document.createElement("article");
+                card.className = "chart-card";
+
+                const header = document.createElement("header");
+                header.className = "chart-header";
+                const info = document.createElement("div");
+                info.className = "metric-info";
+                const name = document.createElement("span");
+                name.className = "metric-name";
+                name.title = key;
+                name.textContent = key;
+                const value = document.createElement("span");
+                value.className = "metric-value";
+                value.textContent = "-";
+                info.append(name, value);
+
+                const actions = document.createElement("div");
+                actions.className = "card-actions";
+                const csvButton = document.createElement("button");
+                csvButton.type = "button";
+                csvButton.className = "icon-btn";
+                csvButton.title = `导出 ${key} CSV`;
+                csvButton.setAttribute("aria-label", csvButton.title);
+                csvButton.textContent = "CSV";
+                const collapseButton = document.createElement("button");
+                collapseButton.type = "button";
+                collapseButton.className = "icon-btn";
+                collapseButton.title = "折叠图表";
+                collapseButton.setAttribute("aria-label", collapseButton.title);
+                collapseButton.setAttribute("aria-expanded", "true");
+                collapseButton.textContent = "v";
+                actions.append(csvButton, collapseButton);
+                header.append(info, actions);
+
+                const wrap = document.createElement("div");
+                wrap.className = "chart-wrap";
+                const canvas = document.createElement("canvas");
+                canvas.setAttribute("role", "img");
+                canvas.setAttribute("aria-label", `${key} 曲线`);
+                wrap.appendChild(canvas);
+                card.append(header, wrap);
+                chartsRoot.appendChild(card);
+
+                const chart = { key, card, canvas, value, history: [], dirty: true };
+                charts.set(key, chart);
+                updateEmptyState();
+
+                csvButton.addEventListener("click", () => exportMetric(chart));
+                collapseButton.addEventListener("click", () => {
+                    const collapsed = card.classList.toggle("collapsed");
+                    collapseButton.textContent = collapsed ? ">" : "v";
+                    collapseButton.title = collapsed ? "展开图表" : "折叠图表";
+                    collapseButton.setAttribute("aria-label", collapseButton.title);
+                    collapseButton.setAttribute("aria-expanded", String(!collapsed));
+                    if (!collapsed) {
+                        chart.dirty = true;
+                        renderChart(chart);
+                    }
                 });
-            }catch(err){ console.warn('parse err', err); }
-        };
+                return chart;
+            }
 
-        document.getElementById('btnPause').addEventListener('click', ()=>{
-            paused = !paused; document.getElementById('btnPause').textContent = paused? '继续':'暂停';
-        });
-        document.getElementById('btnClear').addEventListener('click', ()=>{
-            document.getElementById('charts').innerHTML='';
-            for(const k in charts){ delete charts[k]; }
-            showEmpty();
-        });
+            function appendPoint(point) {
+                if (!point || typeof point.k !== "string" || point.k.length === 0) return;
+                const numericValue = Number(point.v);
+                const timestamp = Number(point.t);
+                if (!Number.isFinite(numericValue) || !Number.isFinite(timestamp)) return;
 
-        document.getElementById('btnDownloadAll').addEventListener('click', ()=>{
-            for(const k in charts){ try{
-                const obj = charts[k];
-                const rows = ['time,value'];
-                (obj.history || []).forEach(pt => rows.push(`${new Date(pt.t).toISOString()},${pt.v}`));
-                const csv = rows.join('\n');
-                const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+                const chart = charts.get(point.k) || makeChart(point.k);
+                // Bound browser history while paused or during long sessions.
+                chart.history.push({ t: timestamp, v: numericValue });
+                if (chart.history.length > MAX_HISTORY_POINTS) {
+                    chart.history.splice(0, chart.history.length - MAX_HISTORY_POINTS);
+                }
+                chart.dirty = true;
+            }
+
+            function visiblePoints(history) {
+                if (history.length === 0) return history;
+                const seconds = Number(timeWindow.value);
+                if (seconds === 0) return history;
+                // Anchor the window to the newest sample so replays work too.
+                const cutoff = history[history.length - 1].t - seconds * 1000;
+                let first = history.length - 1;
+                while (first > 0 && history[first - 1].t >= cutoff) first -= 1;
+                return history.slice(first);
+            }
+
+            function renderChart(chart) {
+                if (!chart.dirty || chart.card.classList.contains("collapsed")) return;
+                chart.dirty = false;
+
+                const points = visiblePoints(chart.history);
+                if (chart.history.length > 0) {
+                    chart.value.textContent = formatValue(chart.history[chart.history.length - 1].v);
+                }
+
+                const rect = chart.canvas.getBoundingClientRect();
+                if (rect.width < 10 || rect.height < 10) return;
+                const ratio = Math.min(window.devicePixelRatio || 1, 2);
+                chart.canvas.width = Math.round(rect.width * ratio);
+                chart.canvas.height = Math.round(rect.height * ratio);
+                const ctx = chart.canvas.getContext("2d");
+                ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+                ctx.clearRect(0, 0, rect.width, rect.height);
+
+                const plot = { left: 58, top: 12, right: rect.width - 12, bottom: rect.height - 28 };
+                const plotWidth = Math.max(1, plot.right - plot.left);
+                const plotHeight = Math.max(1, plot.bottom - plot.top);
+
+                if (points.length === 0) {
+                    ctx.fillStyle = "#9ba7ad";
+                    ctx.font = "12px system-ui, sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.fillText("暂无数据", rect.width / 2, rect.height / 2);
+                    return;
+                }
+
+                let min = points[0].v;
+                let max = points[0].v;
+                for (const point of points) {
+                    min = Math.min(min, point.v);
+                    max = Math.max(max, point.v);
+                }
+                const spread = max - min;
+                const padding = spread === 0 ? Math.max(Math.abs(max) * 0.08, 0.5) : spread * 0.1;
+                min -= padding;
+                max += padding;
+
+                ctx.strokeStyle = "#293136";
+                ctx.fillStyle = "#9ba7ad";
+                ctx.lineWidth = 1;
+                ctx.font = "11px system-ui, sans-serif";
+                ctx.textBaseline = "middle";
+                for (let line = 0; line <= 4; line += 1) {
+                    const y = plot.top + (plotHeight * line) / 4;
+                    ctx.beginPath();
+                    ctx.moveTo(plot.left, Math.round(y) + 0.5);
+                    ctx.lineTo(plot.right, Math.round(y) + 0.5);
+                    ctx.stroke();
+                    ctx.textAlign = "right";
+                    ctx.fillText(formatValue(max - ((max - min) * line) / 4), plot.left - 7, y);
+                }
+
+                const firstTime = points[0].t;
+                const lastTime = points[points.length - 1].t;
+                const timeSpan = Math.max(1, lastTime - firstTime);
+                ctx.textBaseline = "alphabetic";
+                ctx.textAlign = "left";
+                ctx.fillText(new Date(firstTime).toLocaleTimeString(), plot.left, rect.height - 7);
+                ctx.textAlign = "right";
+                ctx.fillText(new Date(lastTime).toLocaleTimeString(), plot.right, rect.height - 7);
+
+                // Downsample only drawing; CSV keeps the full browser history.
+                const maxRenderedPoints = Math.max(100, Math.floor(plotWidth * 2));
+                const step = Math.max(1, Math.ceil(points.length / maxRenderedPoints));
+                ctx.beginPath();
+                ctx.strokeStyle = "#45c4b0";
+                ctx.lineWidth = 1.7;
+                let started = false;
+                for (let index = 0; index < points.length; index += step) {
+                    const point = points[index];
+                    const x = plot.left + ((point.t - firstTime) / timeSpan) * plotWidth;
+                    const y = plot.bottom - ((point.v - min) / (max - min)) * plotHeight;
+                    if (!started) {
+                        ctx.moveTo(x, y);
+                        started = true;
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                const last = points[points.length - 1];
+                const lastX = plot.left + ((last.t - firstTime) / timeSpan) * plotWidth;
+                const lastY = plot.bottom - ((last.v - min) / (max - min)) * plotHeight;
+                ctx.lineTo(lastX, lastY);
+                ctx.stroke();
+            }
+
+            function renderAll(force = false) {
+                if (paused && !force) return;
+                for (const chart of charts.values()) renderChart(chart);
+            }
+
+            function csvCell(value) {
+                const text = String(value);
+                return `"${text.replace(/"/g, '""')}"`;
+            }
+
+            function triggerDownload(filename, rows) {
+                const blob = new Blob(["\ufeff", rows.join("\n")], {
+                    type: "text/csv;charset=utf-8"
+                });
                 const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = k.replace(/\W+/g,'_') + '.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-            }catch(e){console.warn(e)} }
-        });
+                const anchor = document.createElement("a");
+                anchor.href = url;
+                anchor.download = filename;
+                document.body.appendChild(anchor);
+                anchor.click();
+                anchor.remove();
+                URL.revokeObjectURL(url);
+            }
 
-        document.getElementById('maxPoints').addEventListener('input', (e)=>{
-            maxDataPoints = Number(e.target.value); document.getElementById('maxPointsVal').textContent = maxDataPoints;
-        });
+            function safeFilename(name) {
+                const safe = name.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
+                return safe || "metric";
+            }
 
-        // 初始空状态
-        showEmpty();
+            function exportMetric(chart) {
+                const rows = ["timestamp,time,value"];
+                for (const point of chart.history) {
+                    rows.push(`${point.t},${csvCell(new Date(point.t).toISOString())},${point.v}`);
+                }
+                triggerDownload(`${safeFilename(chart.key)}.csv`, rows);
+            }
+
+            function exportAll() {
+                const rows = ["metric,timestamp,time,value"];
+                for (const chart of charts.values()) {
+                    for (const point of chart.history) {
+                        rows.push(`${csvCell(chart.key)},${point.t},${csvCell(new Date(point.t).toISOString())},${point.v}`);
+                    }
+                }
+                const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+                triggerDownload(`rmv-debug-${stamp}.csv`, rows);
+            }
+
+            pauseButton.addEventListener("click", () => {
+                paused = !paused;
+                pauseButton.classList.toggle("active", paused);
+                pauseButton.setAttribute("aria-pressed", String(paused));
+                pauseButton.textContent = paused ? "继续" : "暂停";
+                if (!paused) renderAll(true);
+            });
+
+            clearButton.addEventListener("click", () => {
+                charts.clear();
+                chartsRoot.replaceChildren();
+                updateEmptyState();
+            });
+
+            exportButton.addEventListener("click", exportAll);
+            timeWindow.addEventListener("change", () => {
+                for (const chart of charts.values()) chart.dirty = true;
+                renderAll(true);
+            });
+
+            window.addEventListener("resize", () => {
+                for (const chart of charts.values()) chart.dirty = true;
+                renderAll(true);
+            });
+
+            function connect() {
+                setConnectionState("connecting", "正在连接");
+                // EventSource reconnects and sends Last-Event-ID to the server.
+                eventSource = new EventSource("/data");
+                eventSource.onopen = () => setConnectionState("online", "数据在线");
+                eventSource.onmessage = (event) => {
+                    try {
+                        const payload = JSON.parse(event.data);
+                        if (Array.isArray(payload)) payload.forEach(appendPoint);
+                    } catch (error) {
+                        console.warn("Invalid SSE payload", error);
+                    }
+                };
+                eventSource.onerror = () => {
+                    const closed = eventSource.readyState === EventSource.CLOSED;
+                    setConnectionState(closed ? "offline" : "connecting",
+                        closed ? "连接已断开" : "正在重连");
+                };
+            }
+
+            window.addEventListener("beforeunload", () => {
+                if (eventSource) eventSource.close();
+            });
+
+            updateEmptyState();
+            connect();
+            window.setInterval(() => renderAll(false), 100);
+        })();
     </script>
 </body>
 </html>

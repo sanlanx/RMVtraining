@@ -1,45 +1,55 @@
-// SerialPort.h  这是串口类的头文件，定义了一个串口了
-#ifndef SERIALPORT_HPP
-#define SERIALPORT_HPP
+#ifndef RMV_TRAINING_SERIAL_PORT_HPP
+#define RMV_TRAINING_SERIAL_PORT_HPP
 
-/*linux下串口需要使用到的头文件*/
-#include <errno.h>
-#include <fcntl.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <termios.h>
-#include <unistd.h>
-#include <stdint.h>
-#include <glog/logging.h>
+#include <chrono>
+#include <cstdint>
+#include <string>
+#include <vector>
 
-class SerialPort
-{
+// Owns one Linux serial file descriptor. A constructor receiving a device name
+// only opens it; call InitSerialPort() before I/O. Open/configuration failures
+// are reported by false/isOpen(), and destruction always closes an open device.
+class SerialPort {
 public:
-    SerialPort(char devname[100]);
-    SerialPort(){}
+    SerialPort() noexcept = default;
+    explicit SerialPort(const std::string& device_name) noexcept;
+    explicit SerialPort(const char* device_name) noexcept;
     ~SerialPort();
 
-    bool InitSerialPort(int BaudRate,
-                        int DataBits,
-                        int StopBits,
-                        int ParityBit); // 初始化串口
-    bool CloseSerialPort();             // 关闭串口
+    SerialPort(const SerialPort&) = delete;
+    SerialPort& operator=(const SerialPort&) = delete;
+    SerialPort(SerialPort&& other) noexcept;
+    SerialPort& operator=(SerialPort&& other) noexcept;
 
-    int Write(char *Buff, const int Len); // 向串口写入数据
-    int Read(char *Buff, const int Len);  // 从串口中读取数据
-    void StartRead();  //  开启一个线程来循环读取
-    void StartWrite(); // 开启一个 线程来循环写入
-    int ReceiveFd(); // 获得fd的值，fd是打开串口设备后返回的文件描述符
+    bool InitSerialPort(int baud_rate,
+                        int data_bits = 8,
+                        int stop_bits = 1,
+                        int parity_bit = 'N') noexcept;
+    bool CloseSerialPort() noexcept;
+
+    // Returns length only after that many bytes are available, 0 on timeout,
+    // and -1 on error. A short read is cached for the next call, so callers
+    // never receive a partial requested buffer.
+    int Read(char* buffer, int length) noexcept;
+
+    // Writes until the complete buffer is sent. Returns length on success and
+    // -1 on error/timeout; after -1, a prefix may already be on the wire.
+    int Write(const char* buffer, int length) noexcept;
+
+    // Both waits default to 200 ms; non-positive values are clamped to 1 ms.
+    void setReadTimeout(std::chrono::milliseconds timeout) noexcept;
+    void setWriteTimeout(std::chrono::milliseconds timeout) noexcept;
+
+    [[nodiscard]] bool isOpen() const noexcept;
+    [[nodiscard]] int ReceiveFd() const noexcept;
+
 private:
-    static int m_BaudRateArr[]; // 波特率数组
-    static int m_SpeedArr[];    // 波特率数组
-    static char *m_DevName;     // 串口设备名称
-    struct termios m_Setting;   // 串口配置的结构体
+    bool openDevice(const char* device_name) noexcept;
 
-    int fd; // 打开串口设备后返回的文件描述符
+    int fd_{-1};
+    std::vector<std::uint8_t> pending_read_;
+    std::chrono::milliseconds read_timeout_{200};
+    std::chrono::milliseconds write_timeout_{200};
 };
+
 #endif

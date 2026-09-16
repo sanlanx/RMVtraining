@@ -1,0 +1,47 @@
+%YAML:1.0
+---
+# 此文件只定义填写格式，不含可用标定值。
+# 完成标定后复制为实际配置文件，填写全部矩阵，并将 calibrated 改为 1。
+calibrated: 0
+
+# 标定图像分辨率，单位为 pixel；0 为无效占位值。
+image_width: 0
+image_height: 0
+
+# 相机内参矩阵 K。以下全零数据仅用于保留 OpenCV YAML 矩阵格式，不能用于运行。
+camera_matrix: !!opencv-matrix
+  rows: 3
+  cols: 3
+  dt: d
+  data: [ 0., 0., 0.,
+          0., 0., 0.,
+          0., 0., 0. ]
+
+# 畸变顺序必须与所选标定模型一致，并在报告中说明。
+# 默认模板按 OpenCV pinhole 模型保留 [k1, k2, p1, p2, k3] 五个位置。
+distortion_coefficients: !!opencv-matrix
+  rows: 1
+  cols: 5
+  dt: d
+  data: [ 0., 0., 0., 0., 0. ]
+
+# 从相机坐标系变换到云台坐标系的旋转矩阵 R_gimbal_camera。
+# 全零矩阵是无效占位值，禁止将其视为单位旋转。
+rotation_camera_to_gimbal: !!opencv-matrix
+  rows: 3
+  cols: 3
+  dt: d
+  data: [ 0., 0., 0.,
+          0., 0., 0.,
+          0., 0., 0. ]
+
+# 相机原点在云台坐标系中的位置 t_gimbal_camera，
+# 即从云台原点指向相机原点的平移向量，单位为 m。
+translation_camera_to_gimbal: !!opencv-matrix
+  rows: 3
+  cols: 1
+  dt: d
+  data: [ 0., 0., 0. ]
+
+# 标定结果记录；负数为未填写占位值。
+mean_reprojection_error_px: -1.

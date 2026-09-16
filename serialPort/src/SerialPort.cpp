@@ -1,203 +1,346 @@
-// SerialPort.cpp              实现具体的串口类
-#define VIRTUALPORT
 #include "SerialPort.hpp"
 
-// 波特率数组
-int SerialPort::m_BaudRateArr[] = {B115200, B57600, B9600, B38400, B19200,
-                                   B4800, B2400, B1200, B300};
-int SerialPort::m_SpeedArr[] = {115200, 57600, 9600, 38400, 19200,
-                                4800, 2400, 1200, 300};
+#include <algorithm>
+#include <cerrno>
+#include <chrono>
+#include <cstring>
+#include <fcntl.h>
+#include <poll.h>
+#include <termios.h>
+#include <unistd.h>
+#include <utility>
 
-/*
-构造函数，打开串口。参数WhichCom：第几个串口
-*/
-SerialPort::SerialPort(char devName[100])
-{
-    /*open函数打开串口
-    O_RDWR :串口可读写
-    O_NOCTTY：可以告诉Linux这个程序不会成为这个端口上的“控制终端”.如果不这样做的话,所有的输入,比如键盘上过来的Ctrl+C中止信号等等,会影响到你的进程。
-    O_NDELAY：标志则是告诉Linux,这个程序并不关心DCD信号线的状态——也就是不关心端口另一端是否已经连接（不阻塞）。
-    */
+namespace {
 
-    fd = open(devName, O_RDWR | O_NOCTTY | O_NDELAY);
-    printf("111\n");
-    if (fd < 0)
-    {
-        fd = -1;
-        printf("Can't Open the %s device.\n", devName);
-#ifndef NOPORT
-        std::exit(-1);
-#endif // NOPORT
-        return;
+bool baudRateToSpeed(int baud_rate, speed_t& speed) noexcept {
+    switch (baud_rate) {
+    case 300:
+        speed = B300;
+        return true;
+    case 1200:
+        speed = B1200;
+        return true;
+    case 2400:
+        speed = B2400;
+        return true;
+    case 4800:
+        speed = B4800;
+        return true;
+    case 9600:
+        speed = B9600;
+        return true;
+    case 19200:
+        speed = B19200;
+        return true;
+    case 38400:
+        speed = B38400;
+        return true;
+    case 57600:
+        speed = B57600;
+        return true;
+    case 115200:
+        speed = B115200;
+        return true;
+#ifdef B230400
+    case 230400:
+        speed = B230400;
+        return true;
+#endif
+    default:
+        errno = EINVAL;
+        return false;
     }
-
-    printf("222\n");
-    bzero(&m_Setting, sizeof(m_Setting));
-    printf("222\n");
-    /*重新将串口设置为阻塞模式，即执行read函数时，如果没有数据就会阻塞等待，不往下执行，
-    如果设置为非阻塞模式为fcntl(fd, F_SETFL,
-    O_NDELAY)，此时执行read函数时，如果没有数据， 则返回-1，程序继续往下执行*/
-    fcntl(fd, F_SETFL, 0);
-    printf("222\n");
 }
 
-/**
- * @brief 初始化串口，配置串口的各种参数。
- *
- * @param BaudRate 波特率
- * @param DataBits 数据位
- * @param StopBits 停止位
- * @param ParityBit 校验位
- * @return true
- * @return false
- */
-bool SerialPort ::InitSerialPort(int BaudRate,
-                                 int DataBits,
-                                 int StopBits,
-                                 int ParityBit)
-{
-    if (-1 == fd)
-        return false;
-
-    if (0 != tcgetattr(fd, &m_Setting))
-    {
-        printf("InitSerialPort tcgetattr() line:%d failed\n", __LINE__);
-        return false;
+int remainingMilliseconds(
+    const std::chrono::steady_clock::time_point deadline) noexcept {
+    const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+        deadline - std::chrono::steady_clock::now());
+    if (remaining.count() <= 0) {
+        return 0;
     }
+    return static_cast<int>(std::min<std::int64_t>(remaining.count(), 0x7fffffff));
+}
 
-    // 设置波特率
-    for (int i = 0; i < sizeof(m_SpeedArr) / sizeof(int); i++)
-    {
-        if (BaudRate == m_SpeedArr[i])
-        {
-            tcflush(fd, TCIOFLUSH);                    // 清空发送接收缓冲区
-            cfsetispeed(&m_Setting, m_BaudRateArr[i]); // 设置输入波特率
-            cfsetospeed(&m_Setting, m_BaudRateArr[i]); // 设置输出波特率
-            break;
+int waitForFd(int fd, short events,
+              const std::chrono::steady_clock::time_point deadline) noexcept {
+    while (true) {
+        const int timeout_ms = remainingMilliseconds(deadline);
+        if (timeout_ms == 0) {
+            return 0;
         }
-        if (i == sizeof(m_SpeedArr) / sizeof(int))
-            return false;
+
+        pollfd descriptor{fd, events, 0};
+        const int result = ::poll(&descriptor, 1, timeout_ms);
+        if (result < 0 && errno == EINTR) {
+            continue;
+        }
+        if (result <= 0) {
+            return result;
+        }
+        if ((descriptor.revents & events) != 0) {
+            return 1;
+        }
+        if ((descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            errno = EIO;
+            return -1;
+        }
+    }
+}
+
+} // namespace
+
+SerialPort::SerialPort(const std::string& device_name) noexcept {
+    openDevice(device_name.c_str());
+}
+
+SerialPort::SerialPort(const char* device_name) noexcept {
+    openDevice(device_name);
+}
+
+SerialPort::~SerialPort() {
+    CloseSerialPort();
+}
+
+SerialPort::SerialPort(SerialPort&& other) noexcept
+    : fd_(std::exchange(other.fd_, -1)),
+      pending_read_(std::move(other.pending_read_)),
+      read_timeout_(other.read_timeout_),
+      write_timeout_(other.write_timeout_) {}
+
+SerialPort& SerialPort::operator=(SerialPort&& other) noexcept {
+    if (this == &other) {
+        return *this;
     }
 
-    m_Setting.c_cflag |= CLOCAL; // 控制模式, 保证程序不会成为端口的占有者
-    m_Setting.c_cflag |= CREAD;  // 控制模式, 使能端口读取输入的数据
+    CloseSerialPort();
+    fd_ = std::exchange(other.fd_, -1);
+    pending_read_ = std::move(other.pending_read_);
+    read_timeout_ = other.read_timeout_;
+    write_timeout_ = other.write_timeout_;
+    return *this;
+}
 
-    // 设置数据位
-    m_Setting.c_cflag &= ~CSIZE;
-    switch (DataBits)
-    {
+bool SerialPort::openDevice(const char* device_name) noexcept {
+    if (device_name == nullptr || device_name[0] == '\0') {
+        errno = EINVAL;
+        return false;
+    }
+
+    // Do not become the controlling terminal; poll() below handles blocking.
+    const int opened_fd =
+        ::open(device_name, O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
+    if (opened_fd < 0) {
+        return false;
+    }
+
+    CloseSerialPort();
+    fd_ = opened_fd;
+    pending_read_.clear();
+    return true;
+}
+
+bool SerialPort::InitSerialPort(int baud_rate,
+                                int data_bits,
+                                int stop_bits,
+                                int parity_bit) noexcept {
+    if (!isOpen()) {
+        errno = EBADF;
+        return false;
+    }
+
+    speed_t speed{};
+    if (!baudRateToSpeed(baud_rate, speed)) {
+        return false;
+    }
+
+    termios settings{};
+    if (::tcgetattr(fd_, &settings) != 0) {
+        return false;
+    }
+
+    // Raw mode preserves binary frame bytes. CLOCAL ignores modem-control
+    // lines and CREAD enables input; the default arguments select 8N1.
+    ::cfmakeraw(&settings);
+    settings.c_cflag |= CLOCAL | CREAD;
+    settings.c_cflag &= static_cast<tcflag_t>(~static_cast<tcflag_t>(CSIZE));
+    switch (data_bits) {
+    case 5:
+        settings.c_cflag |= CS5;
+        break;
     case 6:
-        m_Setting.c_cflag |= CS6;
-        break; // 6位数据位
+        settings.c_cflag |= CS6;
+        break;
     case 7:
-        m_Setting.c_cflag |= CS7;
-        break; // 7位数据位
+        settings.c_cflag |= CS7;
+        break;
     case 8:
-        m_Setting.c_cflag |= CS8;
-        break; // 8位数据位
+        settings.c_cflag |= CS8;
+        break;
     default:
-        fprintf(stderr, "unsupported dataBits\n");
+        errno = EINVAL;
         return false;
     }
 
-    // 设置停止位
-    switch (StopBits)
-    {
-    case 1:
-        m_Setting.c_cflag &= ~CSTOPB;
-        break; // 1位停止位
-    case 2:
-        m_Setting.c_cflag |= CSTOPB;
-        break; // 2位停止位
-    default:
+    if (stop_bits == 1) {
+        settings.c_cflag &= static_cast<tcflag_t>(~static_cast<tcflag_t>(CSTOPB));
+    } else if (stop_bits == 2) {
+        settings.c_cflag |= CSTOPB;
+    } else {
+        errno = EINVAL;
         return false;
     }
 
-    // 设置奇偶校验位
-    switch (ParityBit)
-    {
+    switch (parity_bit) {
     case 'n':
     case 'N':
-        m_Setting.c_cflag &= ~PARENB; // 关闭c_cflag中的校验位使能标志PARENB）
-        m_Setting.c_iflag &= ~INPCK;  // 关闭输入奇偶检测
+        settings.c_cflag &= static_cast<tcflag_t>(~static_cast<tcflag_t>(PARENB));
+        settings.c_iflag &= static_cast<tcflag_t>(~static_cast<tcflag_t>(INPCK));
         break;
     case 'o':
     case 'O':
-        m_Setting.c_cflag |=
-            (PARODD |
-             PARENB);               // 激活c_cflag中的校验位使能标志PARENB，同时进行奇校验
-        m_Setting.c_iflag |= INPCK; // 开启输入奇偶检测
+        settings.c_cflag |= PARENB | PARODD;
+        settings.c_iflag |= INPCK;
         break;
-
     case 'e':
     case 'E':
-        m_Setting.c_cflag |= PARENB;  // 激活c_cflag中的校验位使能标志PARENB
-        m_Setting.c_cflag &= ~PARODD; // 使用偶校验
-        m_Setting.c_iflag |= INPCK;   // 开启输入奇偶检测
-        break;
-    case 's':
-    case 'S':
-        m_Setting.c_cflag &= ~PARENB; // 关闭c_cflag中的校验位使能标志PARENB）
-        m_Setting.c_cflag &= ~CSTOPB; // 设置停止位位一位
+        settings.c_cflag |= PARENB;
+        settings.c_cflag &= static_cast<tcflag_t>(~static_cast<tcflag_t>(PARODD));
+        settings.c_iflag |= INPCK;
         break;
     default:
-        fprintf(stderr, "unsupported parityBit\n");
+        errno = EINVAL;
         return false;
     }
-    m_Setting.c_iflag &=-(BRKINT | ICRNL |ISTRIP |IXON);
-    m_Setting.c_oflag &= ~OPOST;                          // 设置为原始输出模式
-    m_Setting.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG); // 设置为原始输入模式
-    /*所谓标准输入模式是指输入是以行为单位的，可以这样理解，输入的数据最开始存储在一个缓冲区里面（但并未真正发送出去），
-    可以使用Backspace或者Delete键来删除输入的字符，从而达到修改字符的目的，当按下回车键时，输入才真正的发送出去，这样终端程序才能接收到。通常情况下我们都是使用的是原始输入模式，也就是说输入的数据并不组成行。在标准输入模式下，系统每次返回的是一行数据，在原始输入模式下，系统又是怎样返回数据的呢？如果读一次就返回一个字节，那么系统开销就会很大，但在读数据的时候，我们也并不知道一次要读多少字节的数据，
-    解决办法是使用c_cc数组中的VMIN和VTIME，如果已经读到了VMIN个字节的数据或者已经超过VTIME时间，系统立即返回。*/
 
-    m_Setting.c_cc[VTIME] = 1;
-    m_Setting.c_cc[VMIN] = 1;
+#ifdef CRTSCTS
+    settings.c_cflag &= ~CRTSCTS;
+#endif
+    // This protocol uses no hardware or software flow control. VMIN/VTIME stay
+    // zero because poll() provides the explicit Read/Write deadlines.
+    const auto software_flow_control =
+        static_cast<tcflag_t>(IXON | IXOFF | IXANY);
+    settings.c_iflag &= static_cast<tcflag_t>(~software_flow_control);
+    settings.c_cc[VMIN] = 0;
+    settings.c_cc[VTIME] = 0;
 
-    /*刷新串口数据
-    TCIFLUSH:刷新收到的数据但是不读
-    TCOFLUSH:刷新写入的数据但是不传送
-    TCIOFLUSH:同时刷新收到的数据但是不读，并且刷新写入的数据但是不传送。 */
-    tcflush(fd, TCIFLUSH);
-
-    // 激活配置
-    if (0 != tcsetattr(fd, TCSANOW, &m_Setting))
-    {
-        printf("InitSerialPort tecsetattr() %d failed\n", __LINE__);
+    if (::cfsetispeed(&settings, speed) != 0 ||
+        ::cfsetospeed(&settings, speed) != 0) {
         return false;
     }
+    if (::tcflush(fd_, TCIOFLUSH) != 0) {
+        return false;
+    }
+    if (::tcsetattr(fd_, TCSANOW, &settings) != 0) {
+        return false;
+    }
+
+    pending_read_.clear();
     return true;
 }
 
-// 关闭串口
-bool SerialPort::CloseSerialPort()
-{
-    if (-1 == fd)
-        return false;
+bool SerialPort::CloseSerialPort() noexcept {
+    pending_read_.clear();
+    if (!isOpen()) {
+        return true;
+    }
 
-    close(fd);
-    fd = -1;
-
-    return true;
+    const int descriptor = std::exchange(fd_, -1);
+    return ::close(descriptor) == 0;
 }
 
-// 从串口读取数据
-int SerialPort::Read(char *readBuffer, const int bufferSize)
-{
-    if (-1 == fd)
+int SerialPort::Read(char* buffer, int length) noexcept {
+    if (!isOpen() || buffer == nullptr || length <= 0) {
+        errno = !isOpen() ? EBADF : EINVAL;
         return -1;
-    return read(fd, readBuffer, bufferSize);
-}
+    }
 
-// 往串口写入数据
-int SerialPort::Write(char *writeBuffer, const int bufferSize)
-{
-    if (-1 == fd)
+    const auto requested = static_cast<std::size_t>(length);
+    const auto deadline = std::chrono::steady_clock::now() + read_timeout_;
+    // Serial reads may return any prefix. Keep it across timeout boundaries and
+    // publish data to the caller only when the requested byte count is complete.
+    while (pending_read_.size() < requested) {
+        const int ready = waitForFd(fd_, POLLIN, deadline);
+        if (ready == 0) {
+            return 0;
+        }
+        if (ready < 0) {
+            return -1;
+        }
+
+        std::uint8_t chunk[256];
+        const std::size_t wanted =
+            std::min(sizeof(chunk), requested - pending_read_.size());
+        const ssize_t count = ::read(fd_, chunk, wanted);
+        if (count > 0) {
+            pending_read_.insert(pending_read_.end(), chunk, chunk + count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            continue;
+        }
+        if (count == 0) {
+            errno = EIO;
+        }
         return -1;
-    return write(fd, writeBuffer, bufferSize);
+    }
+
+    std::memcpy(buffer, pending_read_.data(), requested);
+    pending_read_.erase(pending_read_.begin(),
+                        pending_read_.begin() + static_cast<std::ptrdiff_t>(requested));
+    return length;
 }
 
-int SerialPort::ReceiveFd()
-{
-    return this->fd;
+int SerialPort::Write(const char* buffer, int length) noexcept {
+    if (!isOpen() || buffer == nullptr || length <= 0) {
+        errno = !isOpen() ? EBADF : EINVAL;
+        return -1;
+    }
+
+    const auto requested = static_cast<std::size_t>(length);
+    std::size_t written = 0;
+    const auto deadline = std::chrono::steady_clock::now() + write_timeout_;
+    while (written < requested) {
+        const ssize_t count = ::write(fd_, buffer + written, requested - written);
+        if (count > 0) {
+            written += static_cast<std::size_t>(count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        if (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            return -1;
+        }
+
+        const int ready = waitForFd(fd_, POLLOUT, deadline);
+        if (ready > 0) {
+            continue;
+        }
+        if (ready == 0) {
+            errno = ETIMEDOUT;
+        }
+        return -1;
+    }
+
+    return length;
+}
+
+void SerialPort::setReadTimeout(std::chrono::milliseconds timeout) noexcept {
+    read_timeout_ = std::max(timeout, std::chrono::milliseconds{1});
+}
+
+void SerialPort::setWriteTimeout(std::chrono::milliseconds timeout) noexcept {
+    write_timeout_ = std::max(timeout, std::chrono::milliseconds{1});
+}
+
+bool SerialPort::isOpen() const noexcept {
+    return fd_ >= 0;
+}
+
+int SerialPort::ReceiveFd() const noexcept {
+    return fd_;
 }
