@@ -9,7 +9,7 @@ float finiteOrZero(float value) noexcept {
 }
 
 bool finitePrediction(const PredictionResult& prediction) {
-    // Check both SI values and their float wire representation after m -> mm conversion.
+    // 同时检查国际单位制数值，以及米转换为毫米后的 float 通信表示。
     const float wire_center_x_mm = prediction.center_x_m * 1000.0F;
     const float wire_center_y_mm = prediction.center_y_m * 1000.0F;
     return prediction.target_id != 0U &&
@@ -31,7 +31,7 @@ bool finitePrediction(const PredictionResult& prediction) {
            std::isfinite(prediction.target_pitch_velocity) && prediction.distance_m >= 0.0F;
 }
 
-}  // namespace
+}  // 匿名命名空间
 
 bool isAutoAimStatus(std::uint8_t status) noexcept {
     return status == 0U || status == 5U;
@@ -47,8 +47,8 @@ GimbalState gimbalStateFromMessage(const MessData_AutoAim& message) noexcept {
 }
 
 void setSafeOutput(Translator& translator) noexcept {
-    // Safety invariant: no target, no motion feed-forward and never permit firing.
-    // Controller-owned attitude/bias fields are preserved when finite for diagnostics.
+    // 安全不变量：无目标、无运动前馈，并且绝不允许开火。
+    // 控制器提供的姿态/偏置字段在有限时保留，便于诊断。
     auto& message = translator.message;
     message.head = kFrameHead;
     message.yaw = finiteOrZero(message.yaw);
@@ -72,7 +72,7 @@ void setSafeOutput(Translator& translator) noexcept {
 }
 
 bool applyPrediction(Translator& translator, const PredictionResult& prediction) noexcept {
-    // Any incomplete or non-finite student result is downgraded to the same safe frame.
+    // 学生结果只要不完整或包含非有限值，就降级为同样的安全帧。
     if (prediction.state == TrackingState::NoTarget || !finitePrediction(prediction)) {
         setSafeOutput(translator);
         return false;
@@ -83,7 +83,7 @@ bool applyPrediction(Translator& translator, const PredictionResult& prediction)
     message.armor_flag = prediction.target_id;
     message.distance = prediction.distance_m;
     message.pitch_offset = 0.0F;
-    // The legacy coo_x/coo_y fields are millimeters; internal algorithms use meters.
+    // 旧协议的 coo_x/coo_y 字段单位为毫米；内部算法统一使用米。
     message.coo_x = prediction.center_x_m * 1000.0F;
     message.coo_y = prediction.center_y_m * 1000.0F;
     message.wheel_w = 0.0F;

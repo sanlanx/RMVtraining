@@ -18,19 +18,19 @@ public:
         const VoidMatFunc & u_q, const VecMatFunc & u_r, const VecVecFunc & nomolize_residual,
         const Eigen::MatrixXd & P0, const Eigen::VectorXd & x0);
 
-    // Set the initial state
+    // 设置初始状态。
     void setState(const Eigen::VectorXd & x0);
 
-    // Compute a predicted state
+    // 根据过程模型计算预测状态。
     Eigen::MatrixXd predict();
 
-    // Update the estimated state based on measurement
+    // 根据观测量更新估计状态。
     Eigen::MatrixXd update(const Eigen::VectorXd & z);
 
-    // Update with custom measurement model (z, H, R)
+    // 使用自定义观测模型（z、H、R）更新。
     Eigen::MatrixXd update(const Eigen::VectorXd & z, const Eigen::MatrixXd & H, const Eigen::MatrixXd & R);
 
-    // Use posterior as prior (for sequential updates)
+    // 将后验状态作为下一次更新的先验状态。
     void usePostAsPri() {
         x_pri = x_post;
         P_pri = P_post;
@@ -61,42 +61,42 @@ public:
     }
 
     private:
-    // Process nonlinear vector function
+    // 非线性过程函数。
     VecVecFunc f;
-    // Observation nonlinear vector function
+    // 非线性观测函数。
     VecVecFunc h;
-    // Jacobian of f()
+    // 过程函数 f() 的雅可比矩阵。
     VecMatFunc jacobian_f;
     Eigen::MatrixXd F;
-    // Jacobian of h()
+    // 观测函数 h() 的雅可比矩阵。
     VecMatFunc jacobian_h;
     Eigen::MatrixXd H;
-    // Process noise covariance matrix
+    // 过程噪声协方差矩阵。
     VoidMatFunc update_Q;
     Eigen::MatrixXd Q;
-    // Measurement noise covariance matrix
+    // 观测噪声协方差矩阵。
     VecMatFunc update_R;
     Eigen::MatrixXd R;
-    // Nomalization residual for measurement
+    // 观测残差归一化函数。
     VecVecFunc nomolize_residual;
 
-    // Priori error estimate covariance matrix
+    // 先验误差协方差矩阵。
     Eigen::MatrixXd P_pri;
-    // Posteriori error estimate covariance matrix
+    // 后验误差协方差矩阵。
     Eigen::MatrixXd P_post;
 
-    // Kalman gain
+    // 卡尔曼增益。
     Eigen::MatrixXd K;
 
-    // System dimensions
+    // 状态维度。
     int n;
 
-    // N-size identity
+    // N 维单位矩阵。
     Eigen::MatrixXd I;
 
-    // Priori state
+    // 先验状态。
     Eigen::VectorXd x_pri;
-    // Posteriori state
+    // 后验状态。
     Eigen::VectorXd x_post;
 };
-#endif //_KALMANFILTER_HPP
+#endif // _KALMANFILTER_HPP

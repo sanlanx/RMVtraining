@@ -12,7 +12,7 @@
 
 namespace {
 
-// Resume after the last event acknowledged by a reconnecting SSE client.
+// 从重新连接的 SSE 客户端确认过的最后一个事件之后继续发送。
 std::uint64_t parseLastEventId(const httplib::Request& request) {
     if (!request.has_header("Last-Event-ID")) {
         return 0;
@@ -29,7 +29,7 @@ std::uint64_t parseLastEventId(const httplib::Request& request) {
     }
 }
 
-} // namespace
+} // 匿名命名空间
 
 WebLogger& WebLogger::getInstance() {
     static WebLogger instance;
@@ -53,7 +53,7 @@ void WebLogger::start(int port, const std::string& host) {
         return;
     }
 
-    // Join a previous or unexpectedly exited run before replacing its server.
+    // 替换服务器对象前，先等待上一次运行或意外退出的线程结束。
     if (server_thread_.joinable()) {
         server_thread_.join();
     }
@@ -65,7 +65,7 @@ void WebLogger::start(int port, const std::string& host) {
         next_sequence_ = 1;
     }
 
-    // Register routes and bind first, so a bind failure creates no thread.
+    // 先注册路由并绑定端口；绑定失败时不会创建后台线程。
     auto server = std::make_unique<httplib::Server>();
     configureServer(*server);
     if (!server->bind_to_port(host, port)) {
@@ -76,7 +76,7 @@ void WebLogger::start(int port, const std::string& host) {
     server_ = std::move(server);
     running_.store(true, std::memory_order_release);
     server_thread_ = std::thread(&WebLogger::serverLoop, this);
-    // Wait for the accept loop to remove the immediate start/stop race.
+    // 等待接收循环就绪，避免刚启动就停止时产生竞态。
     server_->wait_until_ready();
     if (!server_->is_running()) {
         running_.store(false, std::memory_order_release);
@@ -96,8 +96,8 @@ void WebLogger::stop() {
     data_cv_.notify_all();
 
     if (server_) {
-        // stop() closes an active listener. decommission() also covers a
-        // listener that has not fully entered its accept loop.
+        // stop() 会关闭已激活的监听器；decommission() 也能处理尚未完全进入
+        // 接收循环的监听器。
         server_->stop();
         server_->decommission();
     }
@@ -123,7 +123,7 @@ void WebLogger::log(const std::string& key, double value) {
         if (!running_.load(std::memory_order_relaxed)) {
             return;
         }
-        // Drop the oldest sample at capacity to keep producer cost bounded.
+        // 达到容量上限时丢弃最旧样本，使生产者的处理开销保持有界。
         if (buffer_.size() >= kBufferCapacity) {
             buffer_.pop_front();
         }
@@ -153,8 +153,7 @@ void WebLogger::configureServer(httplib::Server& server) {
     });
 
     server.Get("/data", [this](const httplib::Request& request, httplib::Response& response) {
-        // Each connection owns a cursor. Clients share history without
-        // consuming samples from one another.
+        // 每个连接拥有独立游标。客户端共享历史记录，但不会消耗其他客户端的样本。
         std::uint64_t cursor = parseLastEventId(request);
         {
             std::lock_guard<std::mutex> lock(buffer_mutex_);
@@ -183,7 +182,7 @@ void WebLogger::configureServer(httplib::Server& server) {
                         return true;
                     }
 
-                    // A client behind the bounded history resumes at its front.
+                    // 如果客户端落后于有限历史记录，则从当前记录的最前端继续。
                     if (!buffer_.empty() && cursor < buffer_.front().sequence) {
                         cursor = buffer_.front().sequence;
                     }
@@ -200,7 +199,7 @@ void WebLogger::configureServer(httplib::Server& server) {
                     }
                 }
 
-                // An SSE comment keeps an otherwise idle connection alive.
+                // SSE 注释可以保持没有新数据时的连接活跃。
                 const std::string payload = batch.empty()
                                                 ? ": keep-alive\n\n"
                                                 : "id: " + std::to_string(last_sequence) +
@@ -212,7 +211,7 @@ void WebLogger::configureServer(httplib::Server& server) {
             });
     });
 
-    // HTML, styles, and plotting code are local, so the page works offline.
+    // HTML、样式和绘图代码均使用本地文件，因此网页可以离线运行。
     bool static_mounted = false;
 #ifdef WEB_DEBUG_STATIC_DIR
     static_mounted = server.set_mount_point("/", WEB_DEBUG_STATIC_DIR);

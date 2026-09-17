@@ -7,7 +7,7 @@
 int main() {
     static_assert(sizeof(Translator) == 64, "The serial message layout must remain unchanged");
 
-    // Calibration accepts the documented matrix shapes and rejects lookalikes.
+    // 标定参数应接受文档规定的矩阵形状，并拒绝外形相似但不合法的输入。
     CameraParameters camera;
     assert(!camera.valid());
     camera.calibrated = true;
@@ -30,7 +30,7 @@ int main() {
     camera.translation_camera_to_gimbal = cv::Mat::zeros(3, 1, CV_64F);
     assert(camera.valid());
 
-    // No-target output must hold the protocol's safety invariants.
+    // 无目标输出必须满足协议规定的安全不变量。
     Translator message{};
     message.message.yaw = 0.25F;
     message.message.pitch = -0.1F;
@@ -56,7 +56,7 @@ int main() {
     assert(std::isfinite(invalid_input.message.target_pitch));
     assert(invalid_input.message.fire_allowance == 0U);
 
-    // Valid predictions map SI values to legacy wire units and tracking states.
+    // 有效预测应将国际单位制数值映射到旧协议单位和跟踪状态。
     PredictionResult stable;
     stable.state = TrackingState::Stable;
     stable.target_id = 3U;
@@ -83,7 +83,7 @@ int main() {
     assert(message.message.fire_allowance == 0U);
     assert(message.message.crc == 0U);
 
-    // Status controls enemy color; controller timing bias reaches the EKF input.
+    // 状态决定敌方颜色；控制器的时序偏置应传递到 EKF 输入。
     assert(isAutoAimStatus(0U));
     assert(isAutoAimStatus(5U));
     assert(!isAutoAimStatus(1U));

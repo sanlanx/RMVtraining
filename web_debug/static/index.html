@@ -305,7 +305,7 @@
             const exportButton = document.getElementById("exportButton");
             const timeWindow = document.getElementById("timeWindow");
 
-            // Each metric key owns one chart and an in-memory browser history.
+            // 每个指标名称对应一张图表，并在浏览器内维护自己的历史记录。
             const charts = new Map();
             let paused = false;
             let streamState = "connecting";
@@ -424,7 +424,7 @@
                 if (!Number.isFinite(numericValue) || !Number.isFinite(timestamp)) return;
 
                 const chart = charts.get(point.k) || makeChart(point.k);
-                // Bound browser history while paused or during long sessions.
+                // 限制浏览器历史记录的长度，避免暂停或长时间运行时无限增长。
                 chart.history.push({ t: timestamp, v: numericValue });
                 if (chart.history.length > MAX_HISTORY_POINTS) {
                     chart.history.splice(0, chart.history.length - MAX_HISTORY_POINTS);
@@ -436,7 +436,7 @@
                 if (history.length === 0) return history;
                 const seconds = Number(timeWindow.value);
                 if (seconds === 0) return history;
-                // Anchor the window to the newest sample so replays work too.
+                // 时间窗口以最新样本为基准，这样回放历史数据时也能正常工作。
                 const cutoff = history[history.length - 1].t - seconds * 1000;
                 let first = history.length - 1;
                 while (first > 0 && history[first - 1].t >= cutoff) first -= 1;
@@ -508,7 +508,7 @@
                 ctx.textAlign = "right";
                 ctx.fillText(new Date(lastTime).toLocaleTimeString(), plot.right, rect.height - 7);
 
-                // Downsample only drawing; CSV keeps the full browser history.
+                // 仅对绘图数据降采样；导出的 CSV 仍保留完整的浏览器历史记录。
                 const maxRenderedPoints = Math.max(100, Math.floor(plotWidth * 2));
                 const step = Math.max(1, Math.ceil(points.length / maxRenderedPoints));
                 ctx.beginPath();
@@ -608,7 +608,7 @@
 
             function connect() {
                 setConnectionState("connecting", "正在连接");
-                // EventSource reconnects and sends Last-Event-ID to the server.
+                // EventSource 重连时会把 Last-Event-ID 发送给服务器。
                 eventSource = new EventSource("/data");
                 eventSource.onopen = () => setConnectionState("online", "数据在线");
                 eventSource.onmessage = (event) => {

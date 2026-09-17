@@ -14,18 +14,18 @@ float Bullet_Model::bullet_iteration_cal()
     iter_num = 0;
 
     if (dist_x < 0.001f)
-        dist_x = 0.001f; // Prevent zero distance (1mm minimum)
+        dist_x = 0.001f; // 防止水平距离为零，最小取 1 mm。
     beta = atan2f(height_z, dist_x);
     z_iter_last = height_z;
     do
     {
         float cos_beta = cosf(beta);
         if (fabsf(cos_beta) < 1e-6)
-            cos_beta = 1e-6; // Prevent division by zero
+            cos_beta = 1e-6; // 防止后续计算除零。
 
         float temp = (dist_x * Kf) / (velo * cos_beta);
         if (temp >= 0.999f)
-            temp = 0.999f; // Prevent log of non-positive
+            temp = 0.999f; // 防止对非正数取对数。
 
         alpha_inter = (float)(1 - temp);
         z_iter = (float)dist_x * tanf(beta) + (dist_x * gravity) / (Kf * velo * cos_beta) + gravity * logf(alpha_inter) / powf(Kf, 2);

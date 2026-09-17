@@ -9,44 +9,44 @@ inline constexpr std::uint8_t kFrameHead = 0x71;
 inline constexpr std::uint8_t kFrameTail = 0x4C;
 inline constexpr std::size_t kCommunicationFrameSize = 64;
 
-// This is the wire layout, not an ordinary in-memory model. One-byte packing
-// removes compiler padding; changing any field breaks compatibility with MCU.
+// 这是串口线上的布局，而不是普通的内存模型。单字节对齐会移除编译器填充；
+// 修改任意字段都会破坏与 MCU 的通信兼容性。
 #pragma pack(push, 1)
 struct MessData_AutoAim {
-    std::uint8_t head; // Both sides: frame head, fixed 0x71.
+    std::uint8_t head; // 双方：帧头，固定为 0x71。
 
-    float yaw;          // MCU -> vision: current gimbal yaw, rad.
-    float pitch;        // MCU -> vision: current gimbal pitch, rad.
-    float roll;         // MCU -> vision: current gimbal roll, rad.
-    std::uint8_t status; // MCU -> vision: team/mode; this task accepts 0 or 5.
-    std::uint8_t is_far; // MCU -> vision: legacy range flag; unused in this task.
-    std::uint8_t armor_flag; // Vision -> MCU: robot ID; 0 means no target.
-    float latency;      // Vision -> MCU: processing latency, ms.
-    float bias;         // MCU -> vision: prediction time bias, s.
-    float distance;     // Vision -> MCU: target distance, m.
-    float pitch_offset; // Reserved legacy field; do not repurpose.
+    float yaw;          // MCU -> 视觉：当前云台偏航角，单位 rad。
+    float pitch;        // MCU -> 视觉：当前云台俯仰角，单位 rad。
+    float roll;         // MCU -> 视觉：当前云台横滚角，单位 rad。
+    std::uint8_t status; // MCU -> 视觉：队伍/模式；本任务只接受 0 或 5。
+    std::uint8_t is_far; // MCU -> 视觉：历史距离标志；本任务不使用。
+    std::uint8_t armor_flag; // 视觉 -> MCU：机器人编号；0 表示无目标。
+    float latency;      // 视觉 -> MCU：处理延迟，单位 ms。
+    float bias;         // MCU -> 视觉：预测时间偏置，单位 s。
+    float distance;     // 视觉 -> MCU：目标距离，单位 m。
+    float pitch_offset; // 历史保留字段；不要改作他用。
 
-    float coo_x; // Vision -> MCU: EKF vehicle-center x, mm.
-    float coo_y; // Vision -> MCU: EKF vehicle-center y, mm.
-    float wheel_w; // Reserved legacy field; do not repurpose.
-    std::uint8_t fire_allowance; // Vision -> MCU: 0 inhibit, 1 permit fire.
+    float coo_x; // 视觉 -> MCU：EKF 估计的车体中心 x，单位 mm。
+    float coo_y; // 视觉 -> MCU：EKF 估计的车体中心 y，单位 mm。
+    float wheel_w; // 历史保留字段；不要改作他用。
+    std::uint8_t fire_allowance; // 视觉 -> MCU：0 禁止开火，1 允许开火。
 
-    float target_yaw;   // Vision -> MCU: commanded yaw, rad.
-    float target_pitch; // Vision -> MCU: commanded pitch, rad.
-    float yaw_vel;      // Vision -> MCU: target yaw rate, rad/s.
-    float pitch_vel;    // Vision -> MCU: target pitch rate, rad/s.
-    std::uint16_t crc;  // Vision -> MCU: EKF state 0/1/2, not a checksum.
-    std::uint8_t tail;  // Both sides: frame tail, fixed 0x4C.
+    float target_yaw;   // 视觉 -> MCU：指令偏航角，单位 rad。
+    float target_pitch; // 视觉 -> MCU：指令俯仰角，单位 rad。
+    float yaw_vel;      // 视觉 -> MCU：目标偏航角速度，单位 rad/s。
+    float pitch_vel;    // 视觉 -> MCU：目标俯仰角速度，单位 rad/s。
+    std::uint16_t crc;  // 视觉 -> MCU：EKF 状态 0/1/2，不是校验和。
+    std::uint8_t tail;  // 双方：帧尾，固定为 0x4C。
 };
 #pragma pack(pop)
 
-// The union exposes the same 64 bytes as named fields or a serial buffer.
+// 联合体让同一组 64 字节既可按字段访问，也可作为串口缓冲区使用。
 union Translator {
     MessData_AutoAim message;
     char data[kCommunicationFrameSize];
 };
 
-// Size and offset checks make accidental protocol layout changes fail at build.
+// 大小和偏移检查可在编译阶段阻止意外的协议布局变化。
 static_assert(sizeof(MessData_AutoAim) == kCommunicationFrameSize,
               "MessData_AutoAim must remain a 64-byte wire frame");
 static_assert(sizeof(Translator) == kCommunicationFrameSize,

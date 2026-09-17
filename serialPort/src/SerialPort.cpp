@@ -88,7 +88,7 @@ int waitForFd(int fd, short events,
     }
 }
 
-} // namespace
+} // 匿名命名空间
 
 SerialPort::SerialPort(const std::string& device_name) noexcept {
     openDevice(device_name.c_str());
@@ -127,7 +127,7 @@ bool SerialPort::openDevice(const char* device_name) noexcept {
         return false;
     }
 
-    // Do not become the controlling terminal; poll() below handles blocking.
+    // 不将设备设为控制终端；阻塞行为由下面的 poll() 处理。
     const int opened_fd =
         ::open(device_name, O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
     if (opened_fd < 0) {
@@ -159,8 +159,8 @@ bool SerialPort::InitSerialPort(int baud_rate,
         return false;
     }
 
-    // Raw mode preserves binary frame bytes. CLOCAL ignores modem-control
-    // lines and CREAD enables input; the default arguments select 8N1.
+    // 原始模式可保留二进制帧字节。CLOCAL 忽略调制解调器控制线，CREAD 启用输入；
+    // 默认参数选择 8N1。
     ::cfmakeraw(&settings);
     settings.c_cflag |= CLOCAL | CREAD;
     settings.c_cflag &= static_cast<tcflag_t>(~static_cast<tcflag_t>(CSIZE));
@@ -216,8 +216,8 @@ bool SerialPort::InitSerialPort(int baud_rate,
 #ifdef CRTSCTS
     settings.c_cflag &= ~CRTSCTS;
 #endif
-    // This protocol uses no hardware or software flow control. VMIN/VTIME stay
-    // zero because poll() provides the explicit Read/Write deadlines.
+    // 本协议不使用硬件或软件流控。VMIN/VTIME 保持为 0，
+    // 读写截止时间由 poll() 显式提供。
     const auto software_flow_control =
         static_cast<tcflag_t>(IXON | IXOFF | IXANY);
     settings.c_iflag &= static_cast<tcflag_t>(~software_flow_control);
@@ -257,8 +257,8 @@ int SerialPort::Read(char* buffer, int length) noexcept {
 
     const auto requested = static_cast<std::size_t>(length);
     const auto deadline = std::chrono::steady_clock::now() + read_timeout_;
-    // Serial reads may return any prefix. Keep it across timeout boundaries and
-    // publish data to the caller only when the requested byte count is complete.
+    // 串口读取可能只返回前缀。跨越超时边界保留这些数据，
+    // 仅在达到请求字节数后才将数据交给调用方。
     while (pending_read_.size() < requested) {
         const int ready = waitForFd(fd_, POLLIN, deadline);
         if (ready == 0) {

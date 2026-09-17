@@ -38,7 +38,7 @@ Plan Planner::plan(double bullet_speed, Translator &ts , float dt)
     Plan plan{};
     plan.control = false;
     
-    // Prevent division by zero and NaNs from dt
+    // 防止 dt 过小导致除零或产生 NaN。
     if (dt <= 1e-6) dt = config_.dt;
 
     // 0. 子弹速度保护

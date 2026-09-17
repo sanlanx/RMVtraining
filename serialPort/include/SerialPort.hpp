@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
-// Owns one Linux serial file descriptor. A constructor receiving a device name
-// only opens it; call InitSerialPort() before I/O. Open/configuration failures
-// are reported by false/isOpen(), and destruction always closes an open device.
+// 管理一个 Linux 串口文件描述符。带设备名的构造函数只负责打开设备；
+// 执行 I/O 前还需调用 InitSerialPort()。打开或配置失败时通过 false/isOpen()
+// 报告；析构时始终关闭仍处于打开状态的设备。
 class SerialPort {
 public:
     SerialPort() noexcept = default;
@@ -27,16 +27,15 @@ public:
                         int parity_bit = 'N') noexcept;
     bool CloseSerialPort() noexcept;
 
-    // Returns length only after that many bytes are available, 0 on timeout,
-    // and -1 on error. A short read is cached for the next call, so callers
-    // never receive a partial requested buffer.
+    // 只有在所需字节数全部可用时才返回长度；超时返回 0，出错返回 -1。
+    // 短读数据会缓存到下一次调用，因此调用方不会收到不完整的请求缓冲区。
     int Read(char* buffer, int length) noexcept;
 
-    // Writes until the complete buffer is sent. Returns length on success and
-    // -1 on error/timeout; after -1, a prefix may already be on the wire.
+    // 持续写入直到完整缓冲区发送完毕。成功返回 length，出错或超时返回 -1；
+    // 返回 -1 时，前缀数据可能已经发送到串口。
     int Write(const char* buffer, int length) noexcept;
 
-    // Both waits default to 200 ms; non-positive values are clamped to 1 ms.
+    // 两种等待超时默认均为 200 ms；非正值会限制为 1 ms。
     void setReadTimeout(std::chrono::milliseconds timeout) noexcept;
     void setWriteTimeout(std::chrono::milliseconds timeout) noexcept;
 

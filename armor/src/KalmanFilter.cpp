@@ -30,7 +30,7 @@ Eigen::MatrixXd ExtendedKalmanFilter::predict()
   x_pri = f(x_post);
   P_pri = F * P_post * F.transpose() + Q;
 
-  // handle the case when there will be no measurement before the next predict
+  // 若下一次预测前没有新的观测，先将先验状态作为当前后验状态。
   x_post = x_pri;
   P_post = P_pri;
 
@@ -52,7 +52,7 @@ Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd & z, const Ei
   H = H_custom;
   R = R_custom;
   K = P_pri * H.transpose() * (H * P_pri * H.transpose() + R).inverse();
-  x_post = x_pri + K * (z - H * x_pri); // Assume linear residual
+  x_post = x_pri + K * (z - H * x_pri); // 自定义模型假定残差为线性残差。
   P_post = (I - K * H) * P_pri;
 
   return x_post;
